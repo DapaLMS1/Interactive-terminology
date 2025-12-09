@@ -59,6 +59,10 @@
             min-height: 8rem; /* Enough height for a card to look right */
             line-height: 8rem;
         }
+        /* Style for cards when they are in the drop zone */
+        .card-in-drop-zone {
+            height: 9rem; /* Slightly smaller for the slot */
+        }
     </style>
 </head>
 <body class="bg-white min-h-screen p-4 md:p-8 font-sans">
@@ -376,7 +380,7 @@
                 "Odont-algia": { name: "Odontalgia", definition: "The medical term for tooth pain or toothache." },
                 "Gingiv-plasty": { name: "Gingivoplasty", definition: "Surgical procedure to reshape or recontour the gum tissue." },
                 "Cardi-logy": { name: "Cardiology", definition: "The study of the heart and its functions in health and disease." },
-                // Prefix + Root (Requires checking for valid combinations without suffix)
+                // Prefix + Root (The code checks for three parts first, then cleans up if parts are missing, so these keys reflect that logic)
                 "Intra-Stomat": { name: "Intraoral", definition: "Pertaining to or situated within the mouth." },
                 "Intra-Maxill": { name: "Intramaxillary", definition: "Located or occurring within the upper jawbone (maxilla)." }
             };
@@ -389,11 +393,6 @@
             };
             const resultArea = document.getElementById('result-area');
             const resetButton = document.getElementById('reset-button');
-            const originalColumns = {
-                prefix: document.getElementById('column-prefix'),
-                root: document.getElementById('column-root'),
-                suffix: document.getElementById('column-suffix'),
-            };
 
             // --- Utility Functions ---
 
@@ -413,23 +412,21 @@
                 const rootValue = rootCard ? rootCard.dataset.value : '';
                 const suffixValue = suffixCard ? suffixCard.dataset.value : '';
 
-                // Build the key (allowing for optional parts, but requiring at least a root)
+                // Build the key using the parts
                 let key = '';
-                if (rootValue) {
-                    if (prefixValue) key += prefixValue + '-';
-                    key += rootValue + '-';
-                    if (suffixValue) key += suffixValue;
-                } else {
-                    resultArea.innerHTML = '<p class="text-gray-500 italic">Drag cards into the slots above to form a word.</p>';
-                    return;
-                }
+                if (prefixValue) key += prefixValue + '-';
+                if (rootValue) key += rootValue + '-';
+                if (suffixValue) key += suffixValue;
                 
                 // Clean up the key string (e.g., remove trailing hyphen)
                 key = key.replace(/-$/, '');
 
                 const wordData = VALID_WORDS[key];
 
-                if (wordData) {
+                if (!rootValue && !prefixValue && !suffixValue) {
+                     resultArea.innerHTML = '<p class="text-gray-500 italic">Drag cards into the slots above to form a word.</p>';
+                } else if (wordData) {
+                    // Success!
                     resultArea.innerHTML = `
                         <div class="bg-success-bg p-4 rounded-lg">
                             <h3 class="text-2xl font-extrabold text-success-text">${wordData.name}</h3>
@@ -437,10 +434,14 @@
                         </div>
                     `;
                 } else {
+                    // Invalid combination
+                    // Build the attempted word by combining parts without hyphens
+                    const attemptedWord = (prefixValue.replace('-', '') + rootValue + suffixValue).toLowerCase();
+
                     resultArea.innerHTML = `
                         <div class="bg-red-100 p-4 rounded-lg">
-                            <h3 class="text-2xl font-bold text-red-700">Not a recognized term.</h3>
-                            <p class="text-base text-red-600 mt-2">Try a different combination! All medical terms require a root, and most common terms use a prefix or suffix.</p>
+                            <h3 class="text-2xl font-bold text-red-700">Attempted Word: ${attemptedWord}</h3>
+                            <p class="text-base text-red-600 mt-2">Not a recognized term. Try a different combination! You need at least a Root, plus a Prefix and/or Suffix for many medical words.</p>
                         </div>
                     `;
                 }
@@ -458,13 +459,19 @@
                     const originalColumn = document.getElementById(originalColumnId);
                     
                     if (originalColumn) {
-                        // Reset card styling if needed
-                        card.classList.remove('h-36'); // Remove smaller card height if applied
+                        // Reset card styling and remove it from the drop zone
+                        card.classList.remove('card-in-drop-zone'); 
                         
                         // Append the card back to its original column
                         originalColumn.appendChild(card);
                     }
                 });
+
+                // Restore placeholders in drop targets
+                Object.values(dropTargets).forEach(zone => {
+                     zone.innerHTML = `<span class="text-lg font-semibold">${zone.dataset.part.charAt(0).toUpperCase() + zone.dataset.part.slice(1)} Slot</span>`;
+                });
+
 
                 // Reset the result area
                 resultArea.innerHTML = '<p class="text-gray-500 italic">Drag cards into the slots above to form a word.</p>';
@@ -472,16 +479,20 @@
             };
 
             // --- Drag and Drop Handlers ---
+            let draggedElement = null; // Store the reference to the element being dragged
 
             // 1. Drag Start
             document.querySelectorAll('.interactive-card').forEach(card => {
                 card.addEventListener('dragstart', (e) => {
-                    e.dataTransfer.setData('text/plain', e.target.dataset.part); // Data: the part type (prefix, root, suffix)
+                    // Use a common data payload, but more importantly, mark the element
+                    e.dataTransfer.setData('text/plain', 'card'); 
+                    draggedElement = e.target;
                     e.target.classList.add('opacity-50', 'border-4', 'border-gray-500', 'shadow-2xl');
                     e.dataTransfer.effectAllowed = 'move';
                 });
 
                 card.addEventListener('dragend', (e) => {
+                    draggedElement = null; // Clear the reference
                     e.target.classList.remove('opacity-50', 'border-4', 'border-gray-500', 'shadow-2xl');
                 });
             });
@@ -490,17 +501,24 @@
             Object.values(dropTargets).forEach(zone => {
                 zone.addEventListener('dragover', (e) => {
                     e.preventDefault(); // Necessary to allow dropping
-                    const draggingPart = e.dataTransfer.getData('text/plain');
+                    
+                    if (!draggedElement) {
+                        e.dataTransfer.dropEffect = 'none'; // No valid card
+                        return;
+                    }
+
+                    const draggingPart = draggedElement.dataset.part;
                     const targetPart = e.currentTarget.dataset.part;
                     
                     // Only allow drops if the dragging card matches the target slot's part type
                     if (draggingPart === targetPart) {
                         e.dataTransfer.dropEffect = 'move';
                         e.currentTarget.classList.add('border-green-500', 'bg-green-50');
+                        e.currentTarget.classList.remove('border-red-500'); // Ensure red border is removed if successful
                     } else {
                         e.dataTransfer.dropEffect = 'none';
                         e.currentTarget.classList.remove('border-green-500', 'bg-green-50');
-                        e.currentTarget.classList.add('border-red-500');
+                        e.currentTarget.classList.add('border-red-500'); // Show red border for invalid drop
                     }
                 });
 
@@ -515,11 +533,13 @@
                     e.preventDefault();
                     e.currentTarget.classList.remove('border-green-500', 'bg-green-50', 'border-red-500');
                     
-                    const draggingPart = e.dataTransfer.getData('text/plain');
+                    if (!draggedElement) return; // Drop only valid elements
+
+                    const draggingPart = draggedElement.dataset.part;
                     const targetPart = e.currentTarget.dataset.part;
 
                     if (draggingPart === targetPart) {
-                        const draggedCard = document.querySelector(`.interactive-card.opacity-50`);
+                        const draggedCard = draggedElement;
                         
                         // If there is already a card in the slot, reset it back to its column
                         const existingCard = zone.querySelector('.interactive-card');
@@ -527,6 +547,8 @@
                             const originalColumnId = existingCard.dataset.originalColumn;
                             const originalColumn = document.getElementById(originalColumnId);
                             if (originalColumn) {
+                                // Remove drop zone styling
+                                existingCard.classList.remove('card-in-drop-zone'); 
                                 originalColumn.appendChild(existingCard);
                             }
                         }
@@ -535,13 +557,14 @@
                         zone.innerHTML = ''; // Clear placeholder text
                         draggedCard.classList.remove('opacity-50', 'border-4', 'border-gray-500', 'shadow-2xl');
                         
-                        // Optionally make the card smaller in the drop zone for visual fitting
-                        draggedCard.classList.add('h-36'); 
+                        // Apply drop zone styling
+                        draggedCard.classList.add('card-in-drop-zone'); 
                         zone.appendChild(draggedCard);
 
                         // Check the newly formed word
                         checkWord();
                     }
+                    draggedElement = null; // Clear the reference after drop
                 });
             });
 
