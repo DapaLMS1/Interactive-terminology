@@ -656,7 +656,7 @@
                     }
                 });
 
-                // The actual drop to reorder
+                // The actual drop to reorder (MODIFIED LOGIC HERE)
                 column.addEventListener('drop', e => {
                     e.preventDefault();
                     if (!draggedElement) return;
@@ -665,17 +665,19 @@
                     const columnPart = column.dataset.part;
 
                     if (draggingPart === columnPart) {
-                        // 1. Find the current placeholder position
-                        const placeholder = column.querySelector(`.${PLACEHOLDER_CLASS}`);
+                        // 1. Clean up: Remove any remaining placeholder
+                        column.querySelectorAll(`.${PLACEHOLDER_CLASS}`).forEach(p => p.remove());
+
+                        // 2. Recalculate the drop position based on the final drop event location (e.clientY)
+                        const afterElement = getDragAfterElement(column, e.clientY);
                         
-                        if (placeholder) {
-                            // 2. Insert the actual card before the placeholder
-                            column.insertBefore(draggedElement, placeholder);
-                            // 3. Remove the placeholder
-                            placeholder.remove();
-                        } else {
-                            // Fallback: If no placeholder was created (e.g., fast drag) append to end
+                        // 3. Insert the actual card at the calculated position
+                        if (afterElement == null) {
+                            // Append to the end
                             column.appendChild(draggedElement);
+                        } else {
+                            // Insert before the determined 'afterElement'
+                            column.insertBefore(draggedElement, afterElement);
                         }
                     }
                     draggedElement = null;
